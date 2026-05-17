@@ -1,7 +1,7 @@
 // Fetches both Airtable bases and writes a single JSON file the
 // dashboard reads at runtime. Token comes from process.env.AIRTABLE_TOKEN.
 // Designed to run inside GitHub Actions; can also run locally if you put
-// AIRTABLE_TOKEN in a .env file and `dotenv` it in.
+// AIRTABLE_TOKEN in a .env file.
 
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -52,6 +52,26 @@ const ACTION_TYPE_CODES = [
 
 const TRUMP_2_START = new Date('2025-01-20');
 
+// Airtable returns multi-select & lookup fields as arrays.
+// CSV exports used comma-separated strings. Normalize both.
+function asArray(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
+  if (typeof v === 'string') return v.split(',').map(s => s.trim()).filter(Boolean);
+  return [String(v).trim()].filter(Boolean);
+}
+
+function asString(v) {
+  if (v == null) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+function firstValue(v) {
+  if (Array.isArray(v)) return v[0] != null ? String(v[0]) : '';
+  return v == null ? '' : String(v);
+}
+
 async function fetchAllRecords(baseId, table, token) {
   const records = [];
   let offset;
@@ -72,13 +92,14 @@ async function fetchAllRecords(baseId, table, token) {
 }
 
 function partnersFor(counsel) {
-  if (!counsel) return ['O'];
-  const m = PARTNERS.filter(([, re]) => re.test(counsel)).map(([code]) => code);
+  const s = asString(counsel);
+  if (!s) return ['O'];
+  const m = PARTNERS.filter(([, re]) => re.test(s)).map(([code]) => code);
   return m.length ? m : ['O'];
 }
 
 function encodeOutcome(raw) {
-  const parts = raw.split('–').map(s => s.trim());
+  const parts = String(raw).split('–').map(s => s.trim());
   if (parts.length < 2) return null;
   const motion = MOTION_CODES[parts[0]] || parts[0];
   const rest = parts.slice(1).join(' – ');
@@ -93,36 +114,37 @@ function transformCases(records, cutoff) {
   const out = [];
   for (const r of records) {
     const f = r.fields || {};
-    if (f['Response Type'] !== 'Lawsuit') continue;
-    const dateStr = f['Date Filed'];
+    if (asString(f['Response Type']) !== 'Lawsuit') continue;
+    const dateStr = firstValue(f['Date Filed']);
     if (!dateStr) continue;
     const d = new Date(dateStr);
     if (d > cutoff) continue;
 
-    const issueAreas = (f['Issue Area(s)'] || '').split(',').map(s => s.trim()).filter(Boolean);
-    const outcomesRaw = f['Relief Outcomes [ext]'] || '';
-    const outcomes = outcomesRaw
-      ? outcomesRaw.split(',').map(s => encodeOutcome(s.trim())).filter(Boolean)
-      : [];
+    const issueAreas = asArray(f['Issue Area(s)']);
+    const outcomes = asArray(f['Relief Outcomes [ext]'])
+      .map(s => encodeOutcome(s))
+      .filter(Boolean);
 
     const item = {
-      n: f['Response Name'] || '',
+      n: asString(f['Response Name']),
       d: dateStr.slice(0, 10),
-      p: partnersFor(f['Counsel Lookup'] || ''),
+      p: partnersFor(f['Counsel Lookup']),
       i: issueAreas,
     };
     if (outcomes.length) item.o = outcomes;
-    if (f['Read More URL [ext]']) item.u = f['Read More URL [ext]'];
+    const url = firstValue(f['Read More URL [ext]']);
+    if (url) item.u = url;
     out.push(item);
   }
   out.sort((a, b) => b.d.localeCompare(a.d));
   return out;
 }
 
-function encodeActionTypes(typeStr) {
+function encodeActionTypes(typeField) {
+  const s = asString(typeField);
   const codes = [];
   for (const [code, needle] of ACTION_TYPE_CODES) {
-    if (typeStr.includes(needle)) codes.push(code);
+    if (s.includes(needle)) codes.push(code);
   }
   return codes.length ? codes : ['Other'];
 }
@@ -131,21 +153,23 @@ function transformActions(records, cutoff) {
   const out = [];
   for (const r of records) {
     const f = r.fields || {};
-    const dateStr = f['Date'];
+    const dateStr = firstValue(f['Date']);
     if (!dateStr) continue;
     const d = new Date(dateStr);
     if (d < TRUMP_2_START || d > cutoff) continue;
 
-    let name = (f['Action'] || '').trim();
+    let name = asString(f['Action']).trim();
     if (name.length > 130) name = name.slice(0, 130).replace(/\s+\S*$/, '') + '...';
 
     const item = {
       a: name,
       d: dateStr.slice(0, 10),
-      t: encodeActionTypes(f['Action Type'] || ''),
+      t: encodeActionTypes(f['Action Type']),
     };
-    if (f['Status']) item.s = f['Status'];
-    if (f['Link to Docket']) item.u = f['Link to Docket'];
+    const status = asString(f['Status']);
+    if (status) item.s = status;
+    const url = firstValue(f['Link to Docket']);
+    if (url) item.u = url;
     out.push(item);
   }
   out.sort((a, b) => b.d.localeCompare(a.d));
