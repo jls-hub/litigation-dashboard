@@ -1,0 +1,63 @@
+name: Build and deploy
+
+on:
+  # Daily refresh: 06:00 UTC ≈ 01:00–02:00 ET depending on DST
+  schedule:
+    - cron: '0 6 * * *'
+  # Manual trigger from the Actions tab — for after a big filing
+  workflow_dispatch:
+  # Rebuild whenever code changes land on main
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't run two deploys in parallel; finish the one in flight first
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Fetch from Airtable
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          RESPONSE_CENTER_BASE_ID: ${{ secrets.RESPONSE_CENTER_BASE_ID }}
+          RESPONSE_CENTER_TABLE: ${{ secrets.RESPONSE_CENTER_TABLE }}
+          DF_ACTIONS_BASE_ID: ${{ secrets.DF_ACTIONS_BASE_ID }}
+          DF_ACTIONS_TABLE: ${{ secrets.DF_ACTIONS_TABLE }}
+        run: npm run fetch-data
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
