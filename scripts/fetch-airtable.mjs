@@ -1,7 +1,5 @@
 // Fetches both Airtable bases and writes a single JSON file the
 // dashboard reads at runtime. Token comes from process.env.AIRTABLE_TOKEN.
-// Designed to run inside GitHub Actions; can also run locally if you put
-// AIRTABLE_TOKEN in a .env file.
 
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -53,7 +51,6 @@ const ACTION_TYPE_CODES = [
 const TRUMP_2_START = new Date('2025-01-20');
 
 // Airtable returns multi-select & lookup fields as arrays.
-// CSV exports used comma-separated strings. Normalize both.
 function asArray(v) {
   if (v == null) return [];
   if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
@@ -70,6 +67,16 @@ function asString(v) {
 function firstValue(v) {
   if (Array.isArray(v)) return v[0] != null ? String(v[0]) : '';
   return v == null ? '' : String(v);
+}
+
+// Some fields appear under multiple names depending on whether you export
+// CSV (which appends [ext] for synced/external fields) or read the API.
+// Try each variant until one returns something non-null.
+function getField(fields, ...candidates) {
+  for (const name of candidates) {
+    if (fields[name] != null) return fields[name];
+  }
+  return undefined;
 }
 
 async function fetchAllRecords(baseId, table, token) {
@@ -112,32 +119,35 @@ function encodeOutcome(raw) {
 
 function transformCases(records, cutoff) {
   const out = [];
+  let sampleOutcome = null;
   for (const r of records) {
     const f = r.fields || {};
-    if (asString(f['Response Type']) !== 'Lawsuit') continue;
-    const dateStr = firstValue(f['Date Filed']);
+    if (asString(getField(f, 'Response Type')) !== 'Lawsuit') continue;
+    const dateStr = firstValue(getField(f, 'Date Filed'));
     if (!dateStr) continue;
     const d = new Date(dateStr);
     if (d > cutoff) continue;
 
-    const issueAreas = asArray(f['Issue Area(s)']);
-    const outcomes = asArray(f['Relief Outcomes [ext]'])
+    const issueAreas = asArray(getField(f, 'Issue Area(s)', 'Issue Areas', 'Issues'));
+    const outcomesRaw = getField(f, 'Relief Outcomes [ext]', 'Relief Outcomes', 'Relief Outcome');
+    if (outcomesRaw && !sampleOutcome) sampleOutcome = outcomesRaw;
+    const outcomes = asArray(outcomesRaw)
       .map(s => encodeOutcome(s))
       .filter(Boolean);
 
     const item = {
-      n: asString(f['Response Name']),
+      n: asString(getField(f, 'Response Name', 'Name')),
       d: dateStr.slice(0, 10),
-      p: partnersFor(f['Counsel Lookup']),
+      p: partnersFor(getField(f, 'Counsel Lookup', 'Counsel')),
       i: issueAreas,
     };
     if (outcomes.length) item.o = outcomes;
-    const url = firstValue(f['Read More URL [ext]']);
+    const url = firstValue(getField(f, 'Read More URL [ext]', 'Read More URL', 'URL'));
     if (url) item.u = url;
     out.push(item);
   }
   out.sort((a, b) => b.d.localeCompare(a.d));
-  return out;
+  return { cases: out, sampleOutcome };
 }
 
 function encodeActionTypes(typeField) {
@@ -153,22 +163,22 @@ function transformActions(records, cutoff) {
   const out = [];
   for (const r of records) {
     const f = r.fields || {};
-    const dateStr = firstValue(f['Date']);
+    const dateStr = firstValue(getField(f, 'Date'));
     if (!dateStr) continue;
     const d = new Date(dateStr);
     if (d < TRUMP_2_START || d > cutoff) continue;
 
-    let name = asString(f['Action']).trim();
+    let name = asString(getField(f, 'Action', 'Name')).trim();
     if (name.length > 130) name = name.slice(0, 130).replace(/\s+\S*$/, '') + '...';
 
     const item = {
       a: name,
       d: dateStr.slice(0, 10),
-      t: encodeActionTypes(f['Action Type']),
+      t: encodeActionTypes(getField(f, 'Action Type')),
     };
-    const status = asString(f['Status']);
+    const status = asString(getField(f, 'Status'));
     if (status) item.s = status;
-    const url = firstValue(f['Link to Docket']);
+    const url = firstValue(getField(f, 'Link to Docket'));
     if (url) item.u = url;
     out.push(item);
   }
@@ -190,14 +200,30 @@ async function main() {
   console.log(`Fetching Response Center: ${rcBase}/${rcTable}`);
   const rcRecords = await fetchAllRecords(rcBase, rcTable, token);
   console.log(`  → ${rcRecords.length} records`);
+  if (rcRecords.length) {
+    console.log(`  Response Center field names on first record:`);
+    console.log(`    ${Object.keys(rcRecords[0].fields).sort().join(', ')}`);
+  }
 
   console.log(`Fetching DF Actions: ${dfBase}/${dfTable}`);
   const dfRecords = await fetchAllRecords(dfBase, dfTable, token);
   console.log(`  → ${dfRecords.length} records`);
+  if (dfRecords.length) {
+    console.log(`  DF Actions field names on first record:`);
+    console.log(`    ${Object.keys(dfRecords[0].fields).sort().join(', ')}`);
+  }
 
-  const cases = transformCases(rcRecords, cutoff);
+  const { cases, sampleOutcome } = transformCases(rcRecords, cutoff);
   const actions = transformActions(dfRecords, cutoff);
+
   console.log(`Transformed: ${cases.length} lawsuits, ${actions.length} DF actions`);
+  if (sampleOutcome) {
+    console.log(`Sample Relief Outcome found: ${JSON.stringify(sampleOutcome)}`);
+  } else {
+    console.log(`NO Relief Outcome values found on any record. Field name probably wrong.`);
+  }
+  const withOutcomes = cases.filter(c => c.o && c.o.length).length;
+  console.log(`Cases with encoded outcomes: ${withOutcomes} / ${cases.length}`);
 
   const outDir = path.resolve(process.cwd(), 'public/data');
   await mkdir(outDir, { recursive: true });
