@@ -50,10 +50,9 @@ const ACTION_TYPE_CODES = [
 
 const TRUMP_2_START = new Date('2025-01-20');
 
-// Airtable returns multi-select & lookup fields as arrays.
 function asArray(v) {
   if (v == null) return [];
-  if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
+  if (Array.isArray(v)) return v.map(x => x == null ? '' : String(x).trim());
   if (typeof v === 'string') return v.split(',').map(s => s.trim()).filter(Boolean);
   return [String(v).trim()].filter(Boolean);
 }
@@ -69,9 +68,6 @@ function firstValue(v) {
   return v == null ? '' : String(v);
 }
 
-// Some fields appear under multiple names depending on whether you export
-// CSV (which appends [ext] for synced/external fields) or read the API.
-// Try each variant until one returns something non-null.
 function getField(fields, ...candidates) {
   for (const name of candidates) {
     if (fields[name] != null) return fields[name];
@@ -105,21 +101,24 @@ function partnersFor(counsel) {
   return m.length ? m : ['O'];
 }
 
-function encodeOutcome(raw) {
-  const parts = String(raw).split('–').map(s => s.trim());
-  if (parts.length < 2) return null;
-  const motion = MOTION_CODES[parts[0]] || parts[0];
-  const rest = parts.slice(1).join(' – ');
-  const courtMatch = rest.match(/\(([^)]+)\)/);
-  const court = courtMatch ? courtMatch[1][0] : '';
-  const outcomeMatch = rest.match(/^\s*(\w+(?:\s+\w+)?)/);
-  const outcome = outcomeMatch ? outcomeMatch[1].trim() : '';
-  return `${motion}|${outcome}|${court}`;
+// Build outcome entries by zipping Stage/Motion + Outcome arrays (both come
+// from the Response Action Events table as parallel lookups).
+function buildOutcomes(motions, outcomes) {
+  const out = [];
+  const n = Math.min(motions.length, outcomes.length);
+  for (let i = 0; i < n; i++) {
+    const motion = motions[i];
+    const outcome = outcomes[i];
+    if (!motion || !outcome) continue;
+    const motionCode = MOTION_CODES[motion] || motion;
+    // Court info isn't in this source; leave the third position empty.
+    out.push(`${motionCode}|${outcome}|`);
+  }
+  return out;
 }
 
 function transformCases(records, cutoff) {
   const out = [];
-  let sampleOutcome = null;
   for (const r of records) {
     const f = r.fields || {};
     if (asString(getField(f, 'Response Type')) !== 'Lawsuit') continue;
@@ -128,12 +127,10 @@ function transformCases(records, cutoff) {
     const d = new Date(dateStr);
     if (d > cutoff) continue;
 
-    const issueAreas = asArray(getField(f, 'Issue Area(s)', 'Issue Areas', 'Issues'));
-    const outcomesRaw = getField(f, 'Relief Outcomes', 'Relief Outcomes [ext]', 'Relief Outcome');
-    if (outcomesRaw && !sampleOutcome) sampleOutcome = outcomesRaw;
-    const outcomes = asArray(outcomesRaw)
-      .map(s => encodeOutcome(s))
-      .filter(Boolean);
+    const issueAreas = asArray(getField(f, 'Issue Area(s)', 'Issue Areas'));
+    const motions  = asArray(getField(f, 'Stage / Motion (from Response Action Events)'));
+    const outcomes = asArray(getField(f, 'Outcome (from Response Action Events)'));
+    const encoded  = buildOutcomes(motions, outcomes);
 
     const item = {
       n: asString(getField(f, 'Response Name', 'Name')),
@@ -141,13 +138,13 @@ function transformCases(records, cutoff) {
       p: partnersFor(getField(f, 'Counsel Lookup', 'Counsel')),
       i: issueAreas,
     };
-    if (outcomes.length) item.o = outcomes;
+    if (encoded.length) item.o = encoded;
     const url = firstValue(getField(f, 'Read More URL [ext]', 'Read More URL', 'URL'));
     if (url) item.u = url;
     out.push(item);
   }
   out.sort((a, b) => b.d.localeCompare(a.d));
-  return { cases: out, sampleOutcome };
+  return out;
 }
 
 function encodeActionTypes(typeField) {
@@ -200,50 +197,41 @@ async function main() {
   console.log(`Fetching Response Center: ${rcBase}/${rcTable}`);
   const rcRecords = await fetchAllRecords(rcBase, rcTable, token);
   console.log(`  → ${rcRecords.length} records`);
-  if (rcRecords.length) {
-    const allFields = new Set();
-    for (const r of rcRecords) for (const k of Object.keys(r.fields)) allFields.add(k);
-    console.log(`  Response Center: ${allFields.size} unique field names across all records:`);
-    console.log(`    ${[...allFields].sort().join(', ')}`);
-    // Sample values of every field that might carry outcome info
-    const probe = [
-      'Relief Outcomes',
-      'Relief Outcomes [ext]',
-      'Stage / Motion (from Relief Outcomes [ext])',
-      'Stage / Motion (from Response Action Events)',
-      'Outcome (from Response Action Events)',
-      'Relief Requests and Outcomes',
-    ];
-    for (const v of probe) {
-      const hits = rcRecords.filter(r => r.fields[v] != null);
-      if (hits.length > 0) {
-        const sample = JSON.stringify(hits[0].fields[v]).slice(0, 300);
-        console.log(`  "${v}" populated on ${hits.length} records. Sample: ${sample}`);
-      }
+
+  // Diagnostic: are the two outcome arrays the same length on each record?
+  let sameLen = 0, diffLen = 0;
+  for (const r of rcRecords) {
+    const m = r.fields['Stage / Motion (from Response Action Events)'];
+    const o = r.fields['Outcome (from Response Action Events)'];
+    if (Array.isArray(m) && Array.isArray(o)) {
+      if (m.length === o.length) sameLen++;
+      else diffLen++;
     }
   }
+  console.log(`  Motion+Outcome alignment: ${sameLen} records same-length, ${diffLen} different`);
 
   console.log(`Fetching DF Actions: ${dfBase}/${dfTable}`);
   const dfRecords = await fetchAllRecords(dfBase, dfTable, token);
   console.log(`  → ${dfRecords.length} records`);
-  if (dfRecords.length) {
-    const allFields = new Set();
-    for (const r of dfRecords) for (const k of Object.keys(r.fields)) allFields.add(k);
-    console.log(`  DF Actions: ${allFields.size} unique field names across all records:`);
-    console.log(`    ${[...allFields].sort().join(', ')}`);
-  }
 
-  const { cases, sampleOutcome } = transformCases(rcRecords, cutoff);
+  const cases = transformCases(rcRecords, cutoff);
   const actions = transformActions(dfRecords, cutoff);
 
-  console.log(`Transformed: ${cases.length} lawsuits, ${actions.length} DF actions`);
-  if (sampleOutcome) {
-    console.log(`Sample Relief Outcome found: ${JSON.stringify(sampleOutcome)}`);
-  } else {
-    console.log(`NO Relief Outcome values found on any record. Field name probably wrong.`);
+  // Sanity-check the headline outcome counts vs. the topline doc
+  let troG = 0, piG = 0, dfTroG = 0, dfPiG = 0;
+  for (const c of cases) {
+    if (!c.o) continue;
+    const isDF = c.p.includes('DF');
+    for (const o of c.o) {
+      const [m, oc] = o.split('|');
+      if (m === 'TRO' && oc === 'Granted') { troG++; if (isDF) dfTroG++; }
+      if (m === 'PI'  && oc === 'Granted') { piG++;  if (isDF) dfPiG++; }
+    }
   }
-  const withOutcomes = cases.filter(c => c.o && c.o.length).length;
-  console.log(`Cases with encoded outcomes: ${withOutcomes} / ${cases.length}`);
+  console.log(`Transformed: ${cases.length} lawsuits, ${actions.length} DF actions`);
+  console.log(`Cases with encoded outcomes: ${cases.filter(c => c.o && c.o.length).length} / ${cases.length}`);
+  console.log(`TROs granted: ${troG} (DF: ${dfTroG})`);
+  console.log(`PIs granted:  ${piG} (DF: ${dfPiG})`);
 
   const outDir = path.resolve(process.cwd(), 'public/data');
   await mkdir(outDir, { recursive: true });
