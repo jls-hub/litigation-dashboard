@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { Search, X, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -102,9 +102,9 @@ export default function LitigationDashboard({ cases, actions }) {
           Legal Responses<br/>
           <em style={{ fontWeight: 350, color: INK_SOFT }}>to the Trump-Vance administration</em>
         </h1>
-        <p style={{ maxWidth: 640, fontSize: 16, lineHeight: 1.6, color: INK_SOFT, marginBottom: 32 }}>
-          An interactive accounting of {cases.length.toLocaleString()} coalition lawsuits and {(actions.length + ADMIN_GRAND_TOTAL).toLocaleString()} Democracy Forward
-          actions of all kinds, drawn from the Response Center and DF Actions Airtables.
+        <p style={{ maxWidth: 720, fontSize: 16, lineHeight: 1.8, color: INK_SOFT, marginBottom: 32 }}>
+          An interactive accounting of <CountingNumber target={cases.length} /> coalition lawsuits
+          and <CountingNumber target={actions.length + ADMIN_GRAND_TOTAL} /> Democracy Forward legal actions.
         </p>
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${RULE}` }}>
           <ViewTab label="Coalition Lawsuits" count={cases.length} active={view === 'lawsuits'} onClick={() => setView('lawsuits')} />
@@ -115,21 +115,12 @@ export default function LitigationDashboard({ cases, actions }) {
       {view === 'lawsuits' ? <LawsuitsView cases={cases} /> : <DFActivityView actions={actions} />}
 
       <footer style={{ maxWidth: 1280, margin: '0 auto', padding: '40px 32px', borderTop: `2px solid ${ACCENT}` }} className="mono">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, fontSize: 11, color: INK_FAINT }}>
-          <div>
-            <div className="smallcaps" style={{ color: ACCENT, marginBottom: 4 }}>Sources & Method</div>
-            <p style={{ lineHeight: 1.6, color: INK_SOFT }}>
-              Response Center Airtable (coalition lawsuits) and DF Actions Airtable (DF's amicus, intervention, FOIA, regulatory comments, and letters),
-              fetched live via the Airtable API. Partner attribution via Counsel field substring match. The DF Activity view filters to actions dated on or after 20 January 2025.
-            </p>
-          </div>
-          <div>
-            <div className="smallcaps" style={{ color: ACCENT, marginBottom: 4 }}>Caveats</div>
-            <p style={{ lineHeight: 1.6, color: INK_SOFT }}>
-              Outcome counts will lag manual figures while the Relief Outcome field is backfilled. EO/policy response counts require the Policies tab.
-              Administrative cases (MSPB/OSC) and FTCA claims are listed below per Appendix B of the weekly Topline; per-case dates and statuses are tracked manually.
-            </p>
-          </div>
+        <div style={{ fontSize: 11, color: INK_FAINT }}>
+          <div className="smallcaps" style={{ color: ACCENT, marginBottom: 4 }}>Sources & Method</div>
+          <p style={{ lineHeight: 1.6, color: INK_SOFT, maxWidth: 720 }}>
+            Response Center Airtable (coalition lawsuits) and DF Actions Airtable (DF's amicus, intervention, FOIA, regulatory comments, and letters),
+            fetched live via the Airtable API. Partner attribution via Counsel field substring match. The DF Activity view filters to actions dated on or after 20 January 2025.
+          </p>
         </div>
       </footer>
     </div>
@@ -216,13 +207,10 @@ function LawsuitsView({ cases }) {
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '40px 32px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap: 1, background: RULE }}>
           <StatCard eyebrow="Total" value={kpis.total} unit="lawsuits filed" />
-          <StatCard eyebrow="TROs granted" value={kpis.totalTRO} unit={`incl. ${kpis.dfTRO} by Democracy Forward †`} />
-          <StatCard eyebrow="PIs granted" value={kpis.totalPI} unit={`incl. ${kpis.dfPI} by Democracy Forward †`} />
+          <StatCard eyebrow="TROs granted" value={kpis.totalTRO} unit={`incl. ${kpis.dfTRO} by Democracy Forward`} />
+          <StatCard eyebrow="PIs granted" value={kpis.totalPI} unit={`incl. ${kpis.dfPI} by Democracy Forward`} />
           <StatCard eyebrow="Democracy Forward" value={kpis.partnerCounts.DF} unit="lawsuits brought" />
         </div>
-        <p className="mono" style={{ fontSize: 11, color: INK_FAINT, marginTop: 16 }}>
-          † Outcome figures reflect cases with the Relief Outcome field populated in Airtable.
-        </p>
       </section>
 
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px' }}>
@@ -559,9 +547,6 @@ function DFActivityView({ actions }) {
         <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 32 }}>
           <div style={{ borderBottom: `1px solid ${RULE}`, paddingBottom: 8, marginBottom: 24 }}>
             <h3 className="display" style={{ fontSize: 22, fontWeight: 500, marginBottom: 4 }}>Administrative cases & FTCA claims</h3>
-            <p style={{ fontSize: 13, color: INK_SOFT, fontStyle: 'italic' }}>
-              Tracked outside the DF Actions table, per Appendix B of the weekly Topline doc. Counts represent individual filings within each category.
-            </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 32 }}>
@@ -713,5 +698,54 @@ function Panel({ title, subtitle, span, children }) {
       </div>
       {children}
     </div>
+  );
+}
+
+// Counting-board ticker for headline numbers. Each digit lives in its own
+// inset card; on mount (and when the target changes), the value animates
+// from 0 up to target using an ease-out curve so it settles cleanly.
+function CountingNumber({ target, duration = 1600 }) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (!target || target <= 0) { setValue(0); return; }
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setValue(Math.floor(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else setValue(target);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+
+  const targetWidth = String(Math.max(target, 1)).length;
+  const padded = String(value).padStart(targetWidth, '0');
+  const digits = padded.split('');
+
+  return (
+    <span style={{
+      display: 'inline-flex', gap: 3, verticalAlign: 'middle',
+      margin: '0 4px', padding: '4px 6px',
+      background: INK, borderRadius: 3,
+      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.4)',
+    }}>
+      {digits.map((d, i) => (
+        <span key={i} style={{
+          display: 'inline-block', minWidth: '0.7em', padding: '1px 4px',
+          background: '#0c141d',
+          color: '#f6f1e4',
+          fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500,
+          fontSize: '1.05em', lineHeight: 1.1, textAlign: 'center',
+          borderRadius: 2, letterSpacing: '0.02em',
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 1px 0 rgba(0,0,0,0.3)',
+        }}>
+          {d}
+        </span>
+      ))}
+    </span>
   );
 }
