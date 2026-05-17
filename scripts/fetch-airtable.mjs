@@ -201,16 +201,26 @@ async function main() {
   const rcRecords = await fetchAllRecords(rcBase, rcTable, token);
   console.log(`  → ${rcRecords.length} records`);
   if (rcRecords.length) {
-    console.log(`  Response Center field names on first record:`);
-    console.log(`    ${Object.keys(rcRecords[0].fields).sort().join(', ')}`);
+    const allFields = new Set();
+    for (const r of rcRecords) for (const k of Object.keys(r.fields)) allFields.add(k);
+    console.log(`  Response Center: ${allFields.size} unique field names across all records:`);
+    console.log(`    ${[...allFields].sort().join(', ')}`);
+    // Count how many records have a value matching each Relief Outcome variant
+    const variants = ['Relief Outcomes [ext]', 'Relief Outcomes', 'Relief Outcome', 'Outcome', 'Outcomes', 'Relief'];
+    for (const v of variants) {
+      const n = rcRecords.filter(r => r.fields[v] != null).length;
+      if (n > 0) console.log(`  Records with "${v}" populated: ${n}`);
+    }
   }
 
   console.log(`Fetching DF Actions: ${dfBase}/${dfTable}`);
   const dfRecords = await fetchAllRecords(dfBase, dfTable, token);
   console.log(`  → ${dfRecords.length} records`);
   if (dfRecords.length) {
-    console.log(`  DF Actions field names on first record:`);
-    console.log(`    ${Object.keys(dfRecords[0].fields).sort().join(', ')}`);
+    const allFields = new Set();
+    for (const r of dfRecords) for (const k of Object.keys(r.fields)) allFields.add(k);
+    console.log(`  DF Actions: ${allFields.size} unique field names across all records:`);
+    console.log(`    ${[...allFields].sort().join(', ')}`);
   }
 
   const { cases, sampleOutcome } = transformCases(rcRecords, cutoff);
