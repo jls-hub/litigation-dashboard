@@ -102,8 +102,8 @@ export default function LitigationDashboard({ cases, actions }) {
           Legal Responses<br/>
           <em style={{ fontWeight: 350, color: INK_SOFT }}>to the Trump-Vance administration</em>
         </h1>
-        <p style={{ maxWidth: 720, fontSize: 16, lineHeight: 1.8, color: INK_SOFT, marginBottom: 32 }}>
-          An interactive accounting of <CountingNumber target={cases.length} /> coalition lawsuits
+        <p style={{ maxWidth: 760, fontSize: 16, lineHeight: 2.1, color: INK_SOFT, marginBottom: 32 }}>
+          An interactive accounting of <CountingNumber target={cases.length} /> coalition lawsuits<br/>
           and <CountingNumber target={actions.length + ADMIN_GRAND_TOTAL} /> Democracy Forward legal actions.
         </p>
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${RULE}` }}>
@@ -544,6 +544,48 @@ function DFActivityView({ actions }) {
       </section>
 
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px 40px' }}>
+        <div style={{ borderTop: `2px solid ${ACCENT}`, borderBottom: `1px solid ${RULE}`, paddingTop: 32, paddingBottom: 12, marginBottom: 16, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <h2 className="display" style={{ fontSize: 28, fontWeight: 500 }}>Action ledger</h2>
+          <span className="mono" style={{ fontSize: 11, color: INK_FAINT }}>{filtered.length.toLocaleString()} actions</span>
+        </div>
+        <div>
+          {pageActions.map((a, i) => {
+            const date = new Date(a.d);
+            const dateStr = date.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
+            return (
+              <div key={i} style={{ borderBottom: `1px solid ${RULE}`, display: 'grid', gridTemplateColumns: '120px 1fr 220px 80px', gap: 12, padding: '12px 8px', alignItems: 'baseline' }}>
+                <div className="mono" style={{ fontSize: 11, color: INK_FAINT }}>{dateStr}</div>
+                <div className="display" style={{ fontSize: 15, fontStyle: 'italic', fontWeight: 400 }}>
+                  {a.u ? <a href={a.u} target="_blank" rel="noopener noreferrer" style={{ color: INK, textDecoration: 'none' }}>{a.a}</a> : a.a}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {a.t.map(t => (
+                    <span key={t} className="mono" style={{ background: T_COLOR[t] || INK_FAINT, color: PAPER, padding: '2px 6px', fontSize: 10 }}>{T_NAME[t]}</span>
+                  ))}
+                </div>
+                <div className="mono" style={{ fontSize: 11, color: INK_FAINT, textAlign: 'right' }}>{a.s || ''}</div>
+              </div>
+            );
+          })}
+          {pageActions.length === 0 && (
+            <div style={{ padding: '64px 0', textAlign: 'center', color: INK_FAINT }}>
+              <p className="display" style={{ fontStyle: 'italic', fontSize: 20 }}>No actions match the current filter.</p>
+              <button onClick={clearFilters} className="mono" style={{ fontSize: 11, textDecoration: 'underline', color: ACCENT, marginTop: 12 }}>clear filters</button>
+            </div>
+          )}
+        </div>
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 24, fontSize: 11, color: INK_SOFT }} className="mono">
+            <button onClick={() => setTablePage(Math.max(0, tablePage - 1))} disabled={tablePage === 0}
+              style={{ textDecoration: 'underline', color: ACCENT, opacity: tablePage === 0 ? 0.3 : 1 }}>← previous</button>
+            <span>Page {tablePage + 1} of {totalPages}</span>
+            <button onClick={() => setTablePage(Math.min(totalPages - 1, tablePage + 1))} disabled={tablePage >= totalPages - 1}
+              style={{ textDecoration: 'underline', color: ACCENT, opacity: tablePage >= totalPages - 1 ? 0.3 : 1 }}>next →</button>
+          </div>
+        )}
+      </section>
+
+      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px 64px' }}>
         <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 32 }}>
           <div style={{ borderBottom: `1px solid ${RULE}`, paddingBottom: 8, marginBottom: 24 }}>
             <h3 className="display" style={{ fontSize: 22, fontWeight: 500, marginBottom: 4 }}>Administrative cases & FTCA claims</h3>
@@ -596,55 +638,9 @@ function DFActivityView({ actions }) {
           </div>
         </div>
       </section>
-
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px 64px' }}>
-        <div style={{ borderTop: `2px solid ${ACCENT}`, borderBottom: `1px solid ${RULE}`, paddingTop: 32, paddingBottom: 12, marginBottom: 16, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <h2 className="display" style={{ fontSize: 28, fontWeight: 500 }}>Action ledger</h2>
-          <span className="mono" style={{ fontSize: 11, color: INK_FAINT }}>{filtered.length.toLocaleString()} actions</span>
-        </div>
-        <div>
-          {pageActions.map((a, i) => {
-            const date = new Date(a.d);
-            const dateStr = date.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
-            return (
-              <div key={i} style={{ borderBottom: `1px solid ${RULE}`, display: 'grid', gridTemplateColumns: '120px 1fr 220px 80px', gap: 12, padding: '12px 8px', alignItems: 'baseline' }}>
-                <div className="mono" style={{ fontSize: 11, color: INK_FAINT }}>{dateStr}</div>
-                <div className="display" style={{ fontSize: 15, fontStyle: 'italic', fontWeight: 400 }}>
-                  {a.u ? <a href={a.u} target="_blank" rel="noopener noreferrer" style={{ color: INK, textDecoration: 'none' }}>{a.a}</a> : a.a}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {a.t.map(t => (
-                    <span key={t} className="mono" style={{ background: T_COLOR[t] || INK_FAINT, color: PAPER, padding: '2px 6px', fontSize: 10 }}>{T_NAME[t]}</span>
-                  ))}
-                </div>
-                <div className="mono" style={{ fontSize: 11, color: INK_FAINT, textAlign: 'right' }}>{a.s || ''}</div>
-              </div>
-            );
-          })}
-          {pageActions.length === 0 && (
-            <div style={{ padding: '64px 0', textAlign: 'center', color: INK_FAINT }}>
-              <p className="display" style={{ fontStyle: 'italic', fontSize: 20 }}>No actions match the current filter.</p>
-              <button onClick={clearFilters} className="mono" style={{ fontSize: 11, textDecoration: 'underline', color: ACCENT, marginTop: 12 }}>clear filters</button>
-            </div>
-          )}
-        </div>
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 24, fontSize: 11, color: INK_SOFT }} className="mono">
-            <button onClick={() => setTablePage(Math.max(0, tablePage - 1))} disabled={tablePage === 0}
-              style={{ textDecoration: 'underline', color: ACCENT, opacity: tablePage === 0 ? 0.3 : 1 }}>← previous</button>
-            <span>Page {tablePage + 1} of {totalPages}</span>
-            <button onClick={() => setTablePage(Math.min(totalPages - 1, tablePage + 1))} disabled={tablePage >= totalPages - 1}
-              style={{ textDecoration: 'underline', color: ACCENT, opacity: tablePage >= totalPages - 1 ? 0.3 : 1 }}>next →</button>
-          </div>
-        )}
-      </section>
     </>
   );
 }
-
-// ===================================================================
-// SHARED COMPONENTS
-// ===================================================================
 function ViewTab({ label, count, active, onClick }) {
   return (
     <button onClick={onClick}
@@ -728,20 +724,17 @@ function CountingNumber({ target, duration = 1600 }) {
 
   return (
     <span style={{
-      display: 'inline-flex', gap: 3, verticalAlign: 'middle',
-      margin: '0 4px', padding: '4px 6px',
-      background: INK, borderRadius: 3,
-      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.4)',
+      display: 'inline-flex', gap: 2, verticalAlign: 'middle',
+      margin: '0 2px',
     }}>
       {digits.map((d, i) => (
         <span key={i} style={{
           display: 'inline-block', minWidth: '0.7em', padding: '1px 4px',
-          background: '#0c141d',
-          color: '#f6f1e4',
+          background: 'transparent',
+          color: INK,
           fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500,
-          fontSize: '1.05em', lineHeight: 1.1, textAlign: 'center',
-          borderRadius: 2, letterSpacing: '0.02em',
-          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 1px 0 rgba(0,0,0,0.3)',
+          fontSize: '1em', lineHeight: 1.2, textAlign: 'center',
+          border: `1px solid ${RULE}`, borderRadius: 2,
         }}>
           {d}
         </span>
