@@ -37,6 +37,33 @@ const PAPER='#f6f1e4', PAPER_DEEP='#ede4cd', INK='#16202b';
 const INK_SOFT='#4a5562', INK_FAINT='#8a8270';
 const ACCENT='#8a2a2a', RULE='#c8bca0';
 
+// Administrative cases (MSPB/OSC) and FTCA claims. Tracked outside the DF
+// Actions Airtable, per Appendix B of the weekly Topline doc. Hardcoded
+// because they change infrequently and live in legal team's manual notes.
+const ADMIN_CASES = {
+  filed: [
+    { forum: 'OSC',   name: 'Terminated Probationary Employees',         count: 31 },
+    { forum: 'OSC',   name: 'Expand Stay of Unlawful Terminations',      count: 5 },
+    { forum: 'MSPB',  name: 'Probationary Immigration Judges (Doyle)',   count: 10 },
+    { forum: 'MSPB',  name: 'Appellate Immigration Judges',              count: 2 },
+    { forum: 'MSPB',  name: 'Oyer',                                      count: 1 },
+    { forum: 'MSPB',  name: 'Former J6 Prosecutors',                     count: 2 },
+    { forum: 'Court', name: 'Stainnak v. Trump (DEI firings)',           count: 1 },
+  ],
+  supporting: [
+    { forum: 'MSPB', name: 'Immigration Judges Fired Under Article II', count: 14 },
+    { forum: 'MSPB', name: 'DEI Terminations',                          count: 4 },
+  ],
+  ftca: [
+    { name: "Gray's Landing tear gas exposure (Portland, OR)", date: '2026-04-21' },
+    { name: 'Dayanne Figueroa damage claim (Chicago, IL)',     date: '2026-05-05' },
+  ],
+};
+const ADMIN_FILED_TOTAL      = ADMIN_CASES.filed.reduce((s, c) => s + c.count, 0);
+const ADMIN_SUPPORTING_TOTAL = ADMIN_CASES.supporting.reduce((s, c) => s + c.count, 0);
+const ADMIN_FTCA_TOTAL       = ADMIN_CASES.ftca.length;
+const ADMIN_GRAND_TOTAL      = ADMIN_FILED_TOTAL + ADMIN_SUPPORTING_TOTAL + ADMIN_FTCA_TOTAL;
+
 const parseOutcome = (raw) => {
   const [m, outcome, court] = raw.split('|');
   return { motion: M_NAME[m] || m, outcome, court: COURT_NAME[court] || court, raw };
@@ -76,12 +103,12 @@ export default function LitigationDashboard({ cases, actions }) {
           <em style={{ fontWeight: 350, color: INK_SOFT }}>to the Trump-Vance administration</em>
         </h1>
         <p style={{ maxWidth: 640, fontSize: 16, lineHeight: 1.6, color: INK_SOFT, marginBottom: 32 }}>
-          An interactive accounting of {cases.length.toLocaleString()} coalition lawsuits and {actions.length} Democracy Forward
+          An interactive accounting of {cases.length.toLocaleString()} coalition lawsuits and {(actions.length + ADMIN_GRAND_TOTAL).toLocaleString()} Democracy Forward
           actions of all kinds, drawn from the Response Center and DF Actions Airtables.
         </p>
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${RULE}` }}>
           <ViewTab label="Coalition Lawsuits" count={cases.length} active={view === 'lawsuits'} onClick={() => setView('lawsuits')} />
-          <ViewTab label="DF Activity (all types)" count={actions.length} active={view === 'df_activity'} onClick={() => setView('df_activity')} />
+          <ViewTab label="DF Activity (all types)" count={actions.length + ADMIN_GRAND_TOTAL} active={view === 'df_activity'} onClick={() => setView('df_activity')} />
         </div>
       </header>
 
@@ -100,7 +127,7 @@ export default function LitigationDashboard({ cases, actions }) {
             <div className="smallcaps" style={{ color: ACCENT, marginBottom: 4 }}>Caveats</div>
             <p style={{ lineHeight: 1.6, color: INK_SOFT }}>
               Outcome counts will lag manual figures while the Relief Outcome field is backfilled. EO/policy response counts require the Policies tab.
-              Approximately 73 MSPB/OSC administrative cases referenced in the weekly Topline doc are tracked outside the DF Actions table and are not visualized here.
+              Administrative cases (MSPB/OSC) and FTCA claims are listed below per Appendix B of the weekly Topline; per-case dates and statuses are tracked manually.
             </p>
           </div>
         </div>
@@ -457,10 +484,10 @@ function DFActivityView({ actions }) {
     <>
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '40px 32px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap: 1, background: RULE }}>
-          <StatCard eyebrow="Total DF actions" value={total} unit="all types · since 20 Jan 2025" />
-          <StatCard eyebrow="Substantive suits" value={substCount} unit="federal & state litigation" />
+          <StatCard eyebrow="Total DF actions" value={total + ADMIN_GRAND_TOTAL} unit={`${total} in DF Actions · ${ADMIN_GRAND_TOTAL} admin & FTCA`} />
+          <StatCard eyebrow="Substantive lawsuits" value={substCount} unit="federal & state litigation" />
           <StatCard eyebrow="Amicus briefs" value={amicusCount} unit="filed in coalition cases" />
-          <StatCard eyebrow="FOIA / Intervention" value={foiaCount + intervCount} unit={`${foiaCount} FOIA · ${intervCount} interventions`} />
+          <StatCard eyebrow="Admin (MSPB/OSC)" value={ADMIN_FILED_TOTAL + ADMIN_SUPPORTING_TOTAL} unit={`${ADMIN_FILED_TOTAL} DF-filed · ${ADMIN_SUPPORTING_TOTAL} supporting`} />
         </div>
       </section>
 
@@ -526,6 +553,63 @@ function DFActivityView({ actions }) {
             })}
           </div>
         </Panel>
+      </section>
+
+      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px 40px' }}>
+        <div style={{ borderTop: `1px solid ${RULE}`, paddingTop: 32 }}>
+          <div style={{ borderBottom: `1px solid ${RULE}`, paddingBottom: 8, marginBottom: 24 }}>
+            <h3 className="display" style={{ fontSize: 22, fontWeight: 500, marginBottom: 4 }}>Administrative cases & FTCA claims</h3>
+            <p style={{ fontSize: 13, color: INK_SOFT, fontStyle: 'italic' }}>
+              Tracked outside the DF Actions table, per Appendix B of the weekly Topline doc. Counts represent individual filings within each category.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 32 }}>
+            <div>
+              <div className="smallcaps mono" style={{ fontSize: 11, color: ACCENT, marginBottom: 12 }}>
+                DF-filed · {ADMIN_FILED_TOTAL} individuals across {ADMIN_CASES.filed.length} categories
+              </div>
+              {ADMIN_CASES.filed.map((c, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0', borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
+                  <span style={{ color: INK_SOFT }}>
+                    <span className="mono" style={{ fontSize: 10, marginRight: 10, color: INK_FAINT, display: 'inline-block', minWidth: 36 }}>{c.forum}</span>
+                    {c.name}
+                  </span>
+                  <span className="mono" style={{ fontWeight: 500, marginLeft: 12 }}>{c.count}</span>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <div className="smallcaps mono" style={{ fontSize: 11, color: ACCENT, marginBottom: 12 }}>
+                DF-supporting · {ADMIN_SUPPORTING_TOTAL} individuals
+              </div>
+              {ADMIN_CASES.supporting.map((c, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0', borderBottom: `1px solid ${RULE}`, fontSize: 13 }}>
+                  <span style={{ color: INK_SOFT }}>
+                    <span className="mono" style={{ fontSize: 10, marginRight: 10, color: INK_FAINT, display: 'inline-block', minWidth: 36 }}>{c.forum}</span>
+                    {c.name}
+                  </span>
+                  <span className="mono" style={{ fontWeight: 500, marginLeft: 12 }}>{c.count}</span>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <div className="smallcaps mono" style={{ fontSize: 11, color: ACCENT, marginBottom: 12 }}>
+                FTCA Claims · {ADMIN_FTCA_TOTAL}
+              </div>
+              {ADMIN_CASES.ftca.map((c, i) => (
+                <div key={i} style={{ padding: '8px 0', borderBottom: `1px solid ${RULE}`, fontSize: 13, color: INK_SOFT }}>
+                  <div style={{ fontStyle: 'italic' }}>{c.name}</div>
+                  <div className="mono" style={{ fontSize: 11, color: INK_FAINT, marginTop: 2 }}>
+                    {new Date(c.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px 64px' }}>
