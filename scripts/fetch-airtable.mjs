@@ -129,7 +129,7 @@ function transformCases(records, cutoff) {
     if (d > cutoff) continue;
 
     const issueAreas = asArray(getField(f, 'Issue Area(s)', 'Issue Areas', 'Issues'));
-    const outcomesRaw = getField(f, 'Relief Outcomes [ext]', 'Relief Outcomes', 'Relief Outcome');
+    const outcomesRaw = getField(f, 'Relief Outcomes', 'Relief Outcomes [ext]', 'Relief Outcome');
     if (outcomesRaw && !sampleOutcome) sampleOutcome = outcomesRaw;
     const outcomes = asArray(outcomesRaw)
       .map(s => encodeOutcome(s))
@@ -205,11 +205,21 @@ async function main() {
     for (const r of rcRecords) for (const k of Object.keys(r.fields)) allFields.add(k);
     console.log(`  Response Center: ${allFields.size} unique field names across all records:`);
     console.log(`    ${[...allFields].sort().join(', ')}`);
-    // Count how many records have a value matching each Relief Outcome variant
-    const variants = ['Relief Outcomes [ext]', 'Relief Outcomes', 'Relief Outcome', 'Outcome', 'Outcomes', 'Relief'];
-    for (const v of variants) {
-      const n = rcRecords.filter(r => r.fields[v] != null).length;
-      if (n > 0) console.log(`  Records with "${v}" populated: ${n}`);
+    // Sample values of every field that might carry outcome info
+    const probe = [
+      'Relief Outcomes',
+      'Relief Outcomes [ext]',
+      'Stage / Motion (from Relief Outcomes [ext])',
+      'Stage / Motion (from Response Action Events)',
+      'Outcome (from Response Action Events)',
+      'Relief Requests and Outcomes',
+    ];
+    for (const v of probe) {
+      const hits = rcRecords.filter(r => r.fields[v] != null);
+      if (hits.length > 0) {
+        const sample = JSON.stringify(hits[0].fields[v]).slice(0, 300);
+        console.log(`  "${v}" populated on ${hits.length} records. Sample: ${sample}`);
+      }
     }
   }
 
